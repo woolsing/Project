@@ -388,6 +388,118 @@
     }
     .score-row:last-child { border-bottom: none; }
 
+    /* ── Rules Modal ─────────────────────────────────────────────────────────── */
+    #rules-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.72);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+    #rules-overlay.show { display: flex; }
+    .rules-modal {
+      background: var(--bg-panel);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      max-width: 540px;
+      width: 100%;
+      max-height: 86vh;
+      overflow-y: auto;
+      padding: 26px 30px;
+      box-shadow: 0 10px 40px rgba(0,0,0,.6);
+    }
+    .rules-modal h2 { margin-bottom: 14px; }
+    .rules-modal h3 {
+      color: var(--accent);
+      font-size: 1rem;
+      margin-top: 16px;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .rules-modal p, .rules-modal li { font-size: .9rem; line-height: 1.55; color: var(--text); }
+    .rules-modal ul { padding-left: 20px; margin: 4px 0; }
+    .rules-modal li { margin-bottom: 4px; }
+    .rules-modal .card-ref {
+      display: inline-block;
+      font-size: .78rem;
+      padding: 1px 6px;
+      border-radius: 3px;
+      margin-right: 4px;
+      font-weight: bold;
+    }
+    .rules-modal .card-ref.attack  { background: rgba(192,57,43,.25);  color: var(--attack); }
+    .rules-modal .card-ref.heal    { background: rgba(39,174,96,.25);  color: var(--heal); }
+    .rules-modal .card-ref.control { background: rgba(142,68,173,.25); color: var(--control); }
+    .rules-modal .card-ref.aoe     { background: rgba(211,84,0,.25);   color: var(--aoe); }
+    .rules-close { margin-top: 20px; width: 100%; }
+    .rules-trigger {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--dim);
+      padding: 7px 16px;
+      font-size: .85rem;
+    }
+    .rules-trigger:hover:not(:disabled) {
+      background: transparent;
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* ── Reactions ───────────────────────────────────────────────────────────── */
+    .opp, .my-stats { position: relative; }
+    .reaction-float {
+      position: absolute;
+      top: -6px;
+      left: 50%;
+      font-size: 1.8rem;
+      pointer-events: none;
+      animation: reactFloat 1.8s ease-out forwards;
+      z-index: 50;
+      text-shadow: 0 1px 4px rgba(0,0,0,.7);
+    }
+    @keyframes reactFloat {
+      0%   { transform: translate(-50%, 8px) scale(.4); opacity: 0; }
+      18%  { transform: translate(-50%, -6px) scale(1.25); opacity: 1; }
+      70%  { transform: translate(-50%, -40px) scale(1); opacity: 1; }
+      100% { transform: translate(-50%, -70px) scale(.9); opacity: 0; }
+    }
+    #reaction-bar {
+      display: flex;
+      gap: 6px;
+      padding: 6px 10px;
+      border-top: 1px solid var(--border);
+      background: var(--bg-panel);
+      flex-shrink: 0;
+      align-items: center;
+    }
+    #reaction-bar .react-label {
+      font-size: .68rem;
+      color: var(--dim);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-right: 4px;
+    }
+    .react-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 10px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      transition: border-color .15s, transform .1s, background .15s;
+      color: var(--text);
+    }
+    .react-btn:hover:not(:disabled) {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+      background: var(--bg-card);
+    }
+    .react-btn:disabled { opacity: .4; cursor: not-allowed; }
+
     /* ── Toast ───────────────────────────────────────────────────────────────── */
     #toast {
       position: fixed;
@@ -436,6 +548,42 @@
       <small>Share your code with friends so they can join</small>
     </div>
     <button id="btn-join">Enter the Tavern</button>
+    <button class="rules-trigger" id="btn-rules-join" type="button">📜 How to Play</button>
+  </div>
+</div>
+
+<!-- ── Rules Modal ──────────────────────────────────────────────────────────── -->
+<div id="rules-overlay" role="dialog" aria-modal="true" aria-labelledby="rules-title">
+  <div class="rules-modal">
+    <h2 id="rules-title">📜 How to Play</h2>
+
+    <h3>The Goal</h3>
+    <p>Be the first player to land <b>3 KOs</b> — knock out 3 opponents by pushing their Intox meter to 100.</p>
+
+    <h3>Intox Meter</h3>
+    <p>Every player starts at 0 intox. Attacks raise it. If it hits <b>100</b>, you collapse — the attacker earns a KO, and you recover at 20 intox after 4 seconds.</p>
+
+    <h3>Each Turn</h3>
+    <ul>
+      <li>Draw 1 card at the start of your turn.</li>
+      <li>Play 1 card (or Pass Turn).</li>
+      <li>Some cards charge an intox "cost" — that's the drink <i>you</i> take to play them.</li>
+    </ul>
+
+    <h3>The Cards</h3>
+    <ul>
+      <li><span class="card-ref attack">ATTACK</span> <b>Cheap Beer</b> — Deal 10 intox to a player.</li>
+      <li><span class="card-ref attack">ATTACK</span> <b>Shots!</b> — Drink 10, deal 25 to a player.</li>
+      <li><span class="card-ref attack">ATTACK</span> <b>Chug!</b> — Drink 20, deal 40 (55 if you're already above 60 intox).</li>
+      <li><span class="card-ref heal">HEAL</span> <b>Water Break</b> — Reduce your own intox by 20.</li>
+      <li><span class="card-ref control">CONTROL</span> <b>Sabotage</b> — Drink 15, skip a player's next turn.</li>
+      <li><span class="card-ref aoe">AOE</span> <b>Buy a Round!</b> — Drink 5, hit every other player for 12.</li>
+    </ul>
+
+    <h3>Reactions</h3>
+    <p>During the game, tap any emoji at the bottom to throw it at the table — visible to everyone, whether it's your turn or not. Short cooldown to keep it civil.</p>
+
+    <button class="rules-close" id="btn-rules-close" type="button">Got It</button>
   </div>
 </div>
 
@@ -462,7 +610,7 @@
       <div id="log"></div>
     </div>
     <div class="g-right">
-      <div class="my-stats" id="my-stats"></div>
+      <div class="my-stats" id="my-stats" data-pid="self"></div>
       <div class="hand-header">Your Hand</div>
       <div id="hand"></div>
       <div class="g-actions">
@@ -470,6 +618,15 @@
         <div style="flex:1"></div>
         <button class="ghost" id="btn-cancel" style="display:none">Cancel</button>
         <button id="btn-pass">Pass Turn</button>
+      </div>
+      <div id="reaction-bar">
+        <span class="react-label">React</span>
+        <button class="react-btn" data-emoji="🍺" title="Cheers">🍺</button>
+        <button class="react-btn" data-emoji="🔥" title="Fire">🔥</button>
+        <button class="react-btn" data-emoji="😂" title="Laugh">😂</button>
+        <button class="react-btn" data-emoji="💀" title="Skull">💀</button>
+        <button class="react-btn" data-emoji="👏" title="Clap">👏</button>
+        <button class="react-btn" data-emoji="🤮" title="Puke">🤮</button>
       </div>
     </div>
   </div>
@@ -523,6 +680,28 @@
   socket.on('state',      s   => { gs = s; render(); });
   socket.on('err',        msg => toast(msg));
   socket.on('disconnect', ()  => toast('Disconnected — refresh to reconnect.', '#444'));
+  socket.on('reaction',   ({ fromId, emoji }) => showReaction(fromId, emoji));
+
+  // ── Reactions ────────────────────────────────────────────────────────────────
+  function showReaction(fromId, emoji) {
+    const host = fromId === myId
+      ? document.getElementById('my-stats')
+      : document.querySelector(`.opp[data-pid="${fromId}"]`);
+    if (!host) return;
+    const bubble = document.createElement('div');
+    bubble.className = 'reaction-float';
+    bubble.textContent = emoji;
+    host.appendChild(bubble);
+    setTimeout(() => bubble.remove(), 1900);
+  }
+
+  let lastReactSentAt = 0;
+  function sendReaction(emoji) {
+    const now = Date.now();
+    if (now - lastReactSentAt < 1200) return;
+    lastReactSentAt = now;
+    socket.emit('react', { emoji });
+  }
 
   // ── Render router ────────────────────────────────────────────────────────────
   function render() {
@@ -586,6 +765,7 @@
 
       const div = document.createElement('div');
       div.className = `opp${isActive ? ' their-turn' : ''}${collapsed ? ' collapsed' : ''}${targetable ? ' targetable' : ''}`;
+      div.dataset.pid = id;
 
       const badge = collapsed
         ? `<span style="font-size:.65rem;color:var(--attack)">💀 COLLAPSED</span>`
@@ -740,6 +920,20 @@
   document.getElementById('btn-again').addEventListener('click', () => {
     gs = null; pendingCard = null;
     show('s-join');
+  });
+
+  // Rules modal
+  const rulesOverlay = document.getElementById('rules-overlay');
+  function openRules()  { rulesOverlay.classList.add('show'); }
+  function closeRules() { rulesOverlay.classList.remove('show'); }
+  document.getElementById('btn-rules-join').addEventListener('click', openRules);
+  document.getElementById('btn-rules-close').addEventListener('click', closeRules);
+  rulesOverlay.addEventListener('click', e => { if (e.target === rulesOverlay) closeRules(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && rulesOverlay.classList.contains('show')) closeRules(); });
+
+  // Reaction buttons
+  document.querySelectorAll('#reaction-bar .react-btn').forEach(btn => {
+    btn.addEventListener('click', () => sendReaction(btn.dataset.emoji));
   });
 </script>
 </body>

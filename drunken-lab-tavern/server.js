@@ -30,6 +30,9 @@ const DECK_POOL = [
   ...Array(2).fill('buy_a_round'),
 ];
 
+const ALLOWED_REACTIONS = ['🍺', '🔥', '😂', '💀', '👏', '🤮'];
+const REACTION_COOLDOWN_MS = 1200;
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function shuffle(arr) {
@@ -57,7 +60,7 @@ function makeRoom(code) {
 }
 
 function makePlayer(id, name) {
-  return { id, name, intox: 0, hand: [], deck: [], discard: [], ko: 0, status: 'active', skipNext: false, lastAttacker: null };
+  return { id, name, intox: 0, hand: [], deck: [], discard: [], ko: 0, status: 'active', skipNext: false, lastAttacker: null, lastReactAt: 0 };
 }
 
 // ── Game Logic ────────────────────────────────────────────────────────────────
@@ -293,6 +296,19 @@ io.on('connection', socket => {
     if (!active || active.id !== socket.id) return;
     addLog(room, `${active.name} passed.`);
     advanceTurn(room);
+  });
+
+  socket.on('react', ({ emoji } = {}) => {
+    const code = socket.data.room;
+    if (!code || !rooms[code]) return;
+    const room = rooms[code];
+    const p = room.players[socket.id];
+    if (!p) return;
+    if (!ALLOWED_REACTIONS.includes(emoji)) return;
+    const now = Date.now();
+    if (now - p.lastReactAt < REACTION_COOLDOWN_MS) return;
+    p.lastReactAt = now;
+    io.to(code).emit('reaction', { fromId: socket.id, fromName: p.name, emoji });
   });
 
   socket.on('disconnect', () => {
