@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Drunken Lab Tavern</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #150d05;
+      --bg-panel:  #231506;
+      --bg-card:   #2d1b08;
+      --accent:    #c9a84c;
+      --accent-hi: #e8c96a;
+      --text:      #f0ddb5;
+      --dim:       #7a6040;
+      --border:    #3d2510;
+      --attack:    #c0392b;
+      --heal:      #27ae60;
+      --control:   #8e44ad;
+      --aoe:       #d35400;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: Georgia, 'Times New Roman', serif;
+      min-height: 100vh;
+    }
+
+    h1 { font-size: 2.4rem; color: var(--accent); text-shadow: 0 0 24px rgba(201,168,76,.45); }
+    h2 { font-size: 1.5rem; color: var(--accent); }
+
+    button {
+      background: var(--accent);
+      color: #140800;
+      border: none;
+      padding: 10px 22px;
+      font: bold 1rem Georgia, serif;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: background .15s, transform .1s;
+    }
+    button:hover:not(:disabled) { background: var(--accent-hi); transform: translateY(-1px); }
+    button:active:not(:disabled) { transform: translateY(0); }
+    button:disabled { background: #333; color: #555; cursor: not-allowed; }
+    button.ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--dim);
+    }
+    button.ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: transparent; }
+
+    input {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 14px;
+      font: 1rem Georgia, serif;
+      border-radius: 4px;
+      outline: none;
+      transition: border-color .2s;
+      width: 100%;
+    }
+    input:focus { border-color: var(--accent); }
+    input::placeholder { color: var(--dim); }
+
+    /* ── Screens ─────────────────────────────────────────────────────────────── */
+    .screen { display: none; }
+    .screen.active { display: flex; }
+
+    /* ── Join ────────────────────────────────────────────────────────────────── */
+    #s-join {
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 28px;
+      padding: 40px 20px;
+    }
+    .join-sub { color: var(--dim); font-size: 1.05rem; }
+    .join-box {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 30px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      width: 100%;
+      max-width: 380px;
+    }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label { color: var(--dim); font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; }
+    .field small { color: var(--dim); font-size: .78rem; }
+
+    /* ── Lobby ───────────────────────────────────────────────────────────────── */
+    #s-lobby {
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 22px;
+      padding: 40px 20px;
+    }
+    .code-badge {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 28px;
+      font-size: 2.2rem;
+      font-weight: bold;
+      color: var(--accent);
+      letter-spacing: .22em;
+    }
+    .player-list {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px;
+      width: 100%;
+      max-width: 380px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .player-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 10px;
+      background: var(--bg-card);
+      border-radius: 4px;
+    }
+    .avatar {
+      width: 30px; height: 30px;
+      background: var(--accent);
+      color: #140800;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: bold; font-size: .85rem; flex-shrink: 0;
+    }
+
+    /* ── Game ────────────────────────────────────────────────────────────────── */
+    #s-game {
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .g-header {
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      gap: 10px;
+    }
+    .g-header .badge { font-size: .78rem; color: var(--dim); }
+    .g-header .badge b { color: var(--accent); }
+    #turn-label { font-size: .95rem; font-weight: bold; }
+    #turn-label.mine { color: var(--accent); }
+    #turn-label.theirs { color: var(--dim); }
+
+    .g-body { display: flex; flex: 1; overflow: hidden; }
+
+    /* Left column: opponents + log */
+    .g-left {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-right: 1px solid var(--border);
+      min-width: 0;
+    }
+
+    #opponents {
+      padding: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .opp {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 9px 11px;
+      min-width: 130px;
+      flex: 1;
+      max-width: 210px;
+      transition: border-color .2s, box-shadow .2s;
+      cursor: default;
+    }
+    .opp.their-turn { border-color: #c0392b; }
+    .opp.collapsed   { opacity: .45; }
+    .opp.targetable  {
+      border-color: var(--accent);
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(201,168,76,.3);
+    }
+    .opp.targetable:hover { border-color: var(--accent-hi); box-shadow: 0 0 16px rgba(201,168,76,.5); }
+
+    .opp-name {
+      font-size: .82rem;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-bottom: 5px;
+    }
+    .opp-stats {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 5px;
+      font-size: .72rem;
+      color: var(--dim);
+    }
+
+    .ibar-wrap {
+      background: #120900;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .ibar {
+      height: 100%;
+      border-radius: 3px;
+      transition: width .4s ease, background-color .4s ease;
+    }
+
+    #log {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 12px;
+      font-size: .78rem;
+    }
+    .log-line { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,.04); line-height: 1.45; color: var(--dim); }
+    .log-line:first-child { color: var(--text); }
+
+    /* Right column: my area */
+    .g-right {
+      width: 340px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .my-stats {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-panel);
+      flex-shrink: 0;
+    }
+    .my-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 7px;
+    }
+    .ko-badge {
+      background: var(--accent);
+      color: #140800;
+      font-weight: bold;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: .82rem;
+    }
+    .ibar-label { font-size: .72rem; color: var(--dim); margin-top: 3px; text-align: right; }
+
+    .hand-header {
+      padding: 7px 14px;
+      font-size: .72rem;
+      color: var(--dim);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #hand {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 2px solid var(--border);
+      border-left-width: 4px;
+      border-radius: 5px;
+      padding: 9px 11px;
+      cursor: pointer;
+      transition: border-color .15s, transform .1s, box-shadow .15s;
+      position: relative;
+    }
+    .card.attack  { border-left-color: var(--attack); }
+    .card.heal    { border-left-color: var(--heal); }
+    .card.control { border-left-color: var(--control); }
+    .card.aoe     { border-left-color: var(--aoe); }
+
+    .card:hover:not(.off):not(.sel) { border-color: var(--accent); transform: translateX(-3px); }
+    .card.sel {
+      border-color: var(--accent);
+      background: rgba(201,168,76,.1);
+      box-shadow: 0 0 10px rgba(201,168,76,.3);
+    }
+    .card.off { opacity: .38; cursor: not-allowed; }
+
+    .card-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; }
+    .card-name { font-weight: bold; font-size: .9rem; }
+    .card-cost {
+      font-size: .7rem;
+      background: rgba(201,168,76,.15);
+      color: var(--accent);
+      padding: 1px 6px;
+      border-radius: 10px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .card-type {
+      display: inline-block;
+      font-size: .62rem;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      font-weight: bold;
+      padding: 1px 5px;
+      border-radius: 2px;
+      margin-bottom: 3px;
+    }
+    .card.attack  .card-type { background: rgba(192,57,43,.2);  color: var(--attack); }
+    .card.heal    .card-type { background: rgba(39,174,96,.2);   color: var(--heal); }
+    .card.control .card-type { background: rgba(142,68,173,.2);  color: var(--control); }
+    .card.aoe     .card-type { background: rgba(211,84,0,.2);    color: var(--aoe); }
+    .card-desc { font-size: .75rem; color: var(--dim); line-height: 1.4; }
+
+    .g-actions {
+      padding: 9px 12px;
+      border-top: 1px solid var(--border);
+      background: var(--bg-panel);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    #target-hint { flex: 1; font-size: .82rem; color: var(--accent); font-style: italic; }
+
+    /* ── End Screen ──────────────────────────────────────────────────────────── */
+    #s-end {
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 24px;
+      padding: 40px 20px;
+      text-align: center;
+    }
+    .winner-box {
+      background: var(--bg-panel);
+      border: 2px solid var(--accent);
+      border-radius: 8px;
+      padding: 22px 44px;
+    }
+    .winner-name { font-size: 2rem; color: var(--accent); margin-top: 6px; }
+    .scores {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px;
+      width: 100%;
+      max-width: 340px;
+    }
+    .score-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: .88rem;
+    }
+    .score-row:last-child { border-bottom: none; }
+
+    /* ── Rules Modal ─────────────────────────────────────────────────────────── */
+    #rules-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.72);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+    #rules-overlay.show { display: flex; }
+    .rules-modal {
+      background: var(--bg-panel);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      max-width: 540px;
+      width: 100%;
+      max-height: 86vh;
+      overflow-y: auto;
+      padding: 26px 30px;
+      box-shadow: 0 10px 40px rgba(0,0,0,.6);
+    }
+    .rules-modal h2 { margin-bottom: 14px; }
+    .rules-modal h3 {
+      color: var(--accent);
+      font-size: 1rem;
+      margin-top: 16px;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .rules-modal p, .rules-modal li { font-size: .9rem; line-height: 1.55; color: var(--text); }
+    .rules-modal ul { padding-left: 20px; margin: 4px 0; }
+    .rules-modal li { margin-bottom: 4px; }
+    .rules-modal .card-ref {
+      display: inline-block;
+      font-size: .78rem;
+      padding: 1px 6px;
+      border-radius: 3px;
+      margin-right: 4px;
+      font-weight: bold;
+    }
+    .rules-modal .card-ref.attack  { background: rgba(192,57,43,.25);  color: var(--attack); }
+    .rules-modal .card-ref.heal    { background: rgba(39,174,96,.25);  color: var(--heal); }
+    .rules-modal .card-ref.control { background: rgba(142,68,173,.25); color: var(--control); }
+    .rules-modal .card-ref.aoe     { background: rgba(211,84,0,.25);   color: var(--aoe); }
+    .rules-close { margin-top: 20px; width: 100%; }
+    .rules-trigger {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--dim);
+      padding: 7px 16px;
+      font-size: .85rem;
+    }
+    .rules-trigger:hover:not(:disabled) {
+      background: transparent;
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* ── Reactions ───────────────────────────────────────────────────────────── */
+    .opp, .my-stats { position: relative; }
+    .reaction-float {
+      position: absolute;
+      top: -6px;
+      left: 50%;
+      font-size: 1.8rem;
+      pointer-events: none;
+      animation: reactFloat 1.8s ease-out forwards;
+      z-index: 50;
+      text-shadow: 0 1px 4px rgba(0,0,0,.7);
+    }
+    @keyframes reactFloat {
+      0%   { transform: translate(-50%, 8px) scale(.4); opacity: 0; }
+      18%  { transform: translate(-50%, -6px) scale(1.25); opacity: 1; }
+      70%  { transform: translate(-50%, -40px) scale(1); opacity: 1; }
+      100% { transform: translate(-50%, -70px) scale(.9); opacity: 0; }
+    }
+    #reaction-bar {
+      display: flex;
+      gap: 6px;
+      padding: 6px 10px;
+      border-top: 1px solid var(--border);
+      background: var(--bg-panel);
+      flex-shrink: 0;
+      align-items: center;
+    }
+    #reaction-bar .react-label {
+      font-size: .68rem;
+      color: var(--dim);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-right: 4px;
+    }
+    .react-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 10px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      transition: border-color .15s, transform .1s, background .15s;
+      color: var(--text);
+    }
+    .react-btn:hover:not(:disabled) {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+      background: var(--bg-card);
+    }
+    .react-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* ── Toast ───────────────────────────────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%) translateY(12px);
+      background: var(--attack);
+      color: #fff;
+      padding: 9px 20px;
+      border-radius: 5px;
+      font-size: .88rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .25s, transform .25s;
+      z-index: 999;
+      max-width: 90vw;
+      text-align: center;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    @media (max-width: 620px) {
+      .g-body { flex-direction: column-reverse; }
+      .g-right { width: 100%; max-height: 55vh; border-right: none; border-top: 1px solid var(--border); }
+      .g-left { border-right: none; max-height: 45vh; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Join ─────────────────────────────────────────────────────────────────── -->
+<div class="screen active" id="s-join">
+  <h1>🍺 Drunken Lab Tavern</h1>
+  <p class="join-sub">A multiplayer card game of questionable sobriety</p>
+  <div class="join-box">
+    <div class="field">
+      <label>Your Name</label>
+      <input id="inp-name" placeholder="Enter your name" maxlength="20" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Room Code</label>
+      <input id="inp-code" placeholder="Leave blank to create a new room" maxlength="8" autocomplete="off">
+      <small>Share your code with friends so they can join</small>
+    </div>
+    <button id="btn-join">Enter the Tavern</button>
+    <button class="rules-trigger" id="btn-rules-join" type="button">📜 How to Play</button>
+  </div>
+</div>
+
+<!-- ── Rules Modal ──────────────────────────────────────────────────────────── -->
+<div id="rules-overlay" role="dialog" aria-modal="true" aria-labelledby="rules-title">
+  <div class="rules-modal">
+    <h2 id="rules-title">📜 How to Play</h2>
+
+    <h3>The Goal</h3>
+    <p>Be the first player to land <b>3 KOs</b> — knock out 3 opponents by pushing their Intox meter to 100.</p>
+
+    <h3>Intox Meter</h3>
+    <p>Every player starts at 0 intox. Attacks raise it. If it hits <b>100</b>, you collapse — the attacker earns a KO, and you recover at 20 intox after 4 seconds.</p>
+
+    <h3>Each Turn</h3>
+    <ul>
+      <li>Draw 1 card at the start of your turn.</li>
+      <li>Play 1 card (or Pass Turn).</li>
+      <li>Some cards charge an intox "cost" — that's the drink <i>you</i> take to play them.</li>
+    </ul>
+
+    <h3>The Cards</h3>
+    <ul>
+      <li><span class="card-ref attack">ATTACK</span> <b>Cheap Beer</b> — Deal 10 intox to a player.</li>
+      <li><span class="card-ref attack">ATTACK</span> <b>Shots!</b> — Drink 10, deal 25 to a player.</li>
+      <li><span class="card-ref attack">ATTACK</span> <b>Chug!</b> — Drink 20, deal 40 (55 if you're already above 60 intox).</li>
+      <li><span class="card-ref heal">HEAL</span> <b>Water Break</b> — Reduce your own intox by 20.</li>
+      <li><span class="card-ref control">CONTROL</span> <b>Sabotage</b> — Drink 15, skip a player's next turn.</li>
+      <li><span class="card-ref aoe">AOE</span> <b>Buy a Round!</b> — Drink 5, hit every other player for 12.</li>
+    </ul>
+
+    <h3>Reactions</h3>
+    <p>During the game, tap any emoji at the bottom to throw it at the table — visible to everyone, whether it's your turn or not. Short cooldown to keep it civil.</p>
+
+    <button class="rules-close" id="btn-rules-close" type="button">Got It</button>
+  </div>
+</div>
+
+<!-- ── Lobby ─────────────────────────────────────────────────────────────────── -->
+<div class="screen" id="s-lobby">
+  <h2>Waiting for Players</h2>
+  <p style="color:var(--dim)">Your room code:</p>
+  <div class="code-badge" id="lobby-code">----</div>
+  <div class="player-list" id="lobby-list"></div>
+  <p style="color:var(--dim);font-size:.85rem">Need 2–6 players to start</p>
+  <button id="btn-start">Start Game</button>
+</div>
+
+<!-- ── Game ──────────────────────────────────────────────────────────────────── -->
+<div class="screen" id="s-game">
+  <div class="g-header">
+    <div class="badge">Room <b id="h-code"></b></div>
+    <div id="turn-label">—</div>
+    <div class="badge">First to <b>3 KOs</b> wins</div>
+  </div>
+  <div class="g-body">
+    <div class="g-left">
+      <div id="opponents"></div>
+      <div id="log"></div>
+    </div>
+    <div class="g-right">
+      <div class="my-stats" id="my-stats" data-pid="self"></div>
+      <div class="hand-header">Your Hand</div>
+      <div id="hand"></div>
+      <div class="g-actions">
+        <span id="target-hint" style="display:none"></span>
+        <div style="flex:1"></div>
+        <button class="ghost" id="btn-cancel" style="display:none">Cancel</button>
+        <button id="btn-pass">Pass Turn</button>
+      </div>
+      <div id="reaction-bar">
+        <span class="react-label">React</span>
+        <button class="react-btn" data-emoji="🍺" title="Cheers">🍺</button>
+        <button class="react-btn" data-emoji="🔥" title="Fire">🔥</button>
+        <button class="react-btn" data-emoji="😂" title="Laugh">😂</button>
+        <button class="react-btn" data-emoji="💀" title="Skull">💀</button>
+        <button class="react-btn" data-emoji="👏" title="Clap">👏</button>
+        <button class="react-btn" data-emoji="🤮" title="Puke">🤮</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── End ───────────────────────────────────────────────────────────────────── -->
+<div class="screen" id="s-end">
+  <h1>🍺 Game Over!</h1>
+  <div class="winner-box">
+    <div style="color:var(--dim);font-size:.95rem">Winner</div>
+    <div class="winner-name" id="winner-name">—</div>
+    <div style="color:var(--dim);font-size:.82rem;margin-top:4px">3 KOs achieved</div>
+  </div>
+  <div class="scores" id="scores"></div>
+  <button id="btn-again">Play Again</button>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  // ── State ────────────────────────────────────────────────────────────────────
+  const socket = io();
+  let myId       = null;
+  let gs         = null;   // game state from server
+  let pendingCard = null;  // card waiting for target selection
+
+  // ── Utilities ────────────────────────────────────────────────────────────────
+  function show(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+  }
+
+  let toastT = null;
+  function toast(msg, bg = 'var(--attack)') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.style.background = bg;
+    el.classList.add('show');
+    clearTimeout(toastT);
+    toastT = setTimeout(() => el.classList.remove('show'), 3200);
+  }
+
+  function ibarHtml(intox, h = 8) {
+    const pct = Math.min(100, Math.max(0, intox));
+    const bg = pct <= 40 ? '#27ae60' : pct <= 70 ? '#f39c12' : pct <= 90 ? '#e67e22' : '#c0392b';
+    return `<div class="ibar-wrap" style="height:${h}px"><div class="ibar" style="width:${pct}%;background:${bg}"></div></div>`;
+  }
+
+  // ── Socket ───────────────────────────────────────────────────────────────────
+  socket.on('connect',    ()  => { myId = socket.id; });
+  socket.on('state',      s   => { gs = s; render(); });
+  socket.on('err',        msg => toast(msg));
+  socket.on('disconnect', ()  => toast('Disconnected — refresh to reconnect.', '#444'));
+  socket.on('reaction',   ({ fromId, emoji }) => showReaction(fromId, emoji));
+
+  // ── Reactions ────────────────────────────────────────────────────────────────
+  function showReaction(fromId, emoji) {
+    const host = fromId === myId
+      ? document.getElementById('my-stats')
+      : document.querySelector(`.opp[data-pid="${fromId}"]`);
+    if (!host) return;
+    const bubble = document.createElement('div');
+    bubble.className = 'reaction-float';
+    bubble.textContent = emoji;
+    host.appendChild(bubble);
+    setTimeout(() => bubble.remove(), 1900);
+  }
+
+  let lastReactSentAt = 0;
+  function sendReaction(emoji) {
+    const now = Date.now();
+    if (now - lastReactSentAt < 1200) return;
+    lastReactSentAt = now;
+    socket.emit('react', { emoji });
+  }
+
+  // ── Render router ────────────────────────────────────────────────────────────
+  function render() {
+    if (!gs) return;
+    if (gs.phase === 'lobby')   { renderLobby();  return; }
+    if (gs.phase === 'playing') { renderGame();   return; }
+    if (gs.phase === 'ended')   { renderEnd();    return; }
+  }
+
+  // ── Lobby ────────────────────────────────────────────────────────────────────
+  function renderLobby() {
+    show('s-lobby');
+    document.getElementById('lobby-code').textContent = gs.code;
+    const list = document.getElementById('lobby-list');
+    list.innerHTML = `<div style="color:var(--dim);font-size:.76rem;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Players (${gs.turnOrder.length}/6)</div>`;
+    for (const id of gs.turnOrder) {
+      const p = gs.players[id];
+      const me = id === myId ? ' <span style="color:var(--dim);font-size:.72rem">(you)</span>' : '';
+      list.innerHTML += `
+        <div class="player-row">
+          <div class="avatar">${p.name[0].toUpperCase()}</div>
+          <span style="font-size:.92rem">${p.name}${me}</span>
+        </div>`;
+    }
+  }
+
+  // ── Game ─────────────────────────────────────────────────────────────────────
+  function renderGame() {
+    show('s-game');
+    const me       = gs.players[myId];
+    const activeId = gs.turnOrder[gs.activeIdx];
+    const myTurn   = activeId === myId;
+
+    // Header
+    document.getElementById('h-code').textContent = gs.code;
+    const tl = document.getElementById('turn-label');
+    if (myTurn) {
+      tl.textContent = '⚡ Your Turn';
+      tl.className = 'mine';
+    } else {
+      tl.textContent = `${gs.players[activeId]?.name ?? '?'}'s Turn`;
+      tl.className = 'theirs';
+    }
+
+    renderOpponents(myTurn);
+    renderLog();
+    if (me) { renderMyStats(me); renderHand(me, myTurn); }
+
+    document.getElementById('btn-pass').disabled = !myTurn || me?.status === 'collapsed';
+  }
+
+  function renderOpponents(myTurn) {
+    const area = document.getElementById('opponents');
+    area.innerHTML = '';
+    for (const id of gs.turnOrder) {
+      if (id === myId) continue;
+      const p          = gs.players[id];
+      const isActive   = gs.turnOrder[gs.activeIdx] === id;
+      const targetable = myTurn && pendingCard && p.status === 'active';
+      const collapsed  = p.status === 'collapsed';
+
+      const div = document.createElement('div');
+      div.className = `opp${isActive ? ' their-turn' : ''}${collapsed ? ' collapsed' : ''}${targetable ? ' targetable' : ''}`;
+      div.dataset.pid = id;
+
+      const badge = collapsed
+        ? `<span style="font-size:.65rem;color:var(--attack)">💀 COLLAPSED</span>`
+        : p.skipNext
+          ? `<span style="font-size:.65rem;color:var(--control)">⏭ SKIPPED</span>`
+          : '';
+
+      div.innerHTML = `
+        <div class="opp-name">${isActive ? '🎲 ' : collapsed ? '💀 ' : ''}${p.name}</div>
+        ${badge}
+        ${ibarHtml(p.intox, 7)}
+        <div class="opp-stats">
+          <span>🍺 ${p.intox}/100</span>
+          <span>🏆 ${p.ko} KO</span>
+          <span>🃏 ${p.handCount}</span>
+        </div>`;
+
+      if (targetable) div.addEventListener('click', () => selectTarget(id));
+      area.appendChild(div);
+    }
+  }
+
+  function renderLog() {
+    document.getElementById('log').innerHTML =
+      (gs.log || []).map(l => `<div class="log-line">${l}</div>`).join('');
+  }
+
+  function renderMyStats(me) {
+    document.getElementById('my-stats').innerHTML = `
+      <div class="my-top">
+        <strong>${me.name} <span style="color:var(--dim);font-size:.75rem">(you)</span></strong>
+        <span class="ko-badge">🏆 ${me.ko} / 3 KO</span>
+      </div>
+      ${ibarHtml(me.intox, 13)}
+      <div class="ibar-label">
+        Intox: ${me.intox}/100
+        ${me.intox >= 80 ? ' ⚠️ Danger zone!' : ''}
+      </div>
+      ${me.status === 'collapsed' ? '<div style="color:var(--attack);margin-top:6px;font-size:.8rem">💀 Collapsed — recovering in 4s…</div>' : ''}
+      ${me.skipNext ? '<div style="color:var(--control);margin-top:5px;font-size:.8rem">⏭ Next turn will be skipped</div>' : ''}`;
+  }
+
+  function renderHand(me, myTurn) {
+    const handEl = document.getElementById('hand');
+    handEl.innerHTML = '';
+
+    if (me.status === 'collapsed') {
+      handEl.innerHTML = '<p style="color:var(--dim);text-align:center;padding:20px;font-size:.82rem">Recovering… back soon</p>';
+    } else if (!me.hand?.length) {
+      handEl.innerHTML = '<p style="color:var(--dim);text-align:center;padding:20px;font-size:.82rem">No cards in hand</p>';
+    } else {
+      for (const card of me.hand) {
+        const sel  = pendingCard?.instanceId === card.instanceId;
+        const off  = !myTurn;
+        const el   = document.createElement('div');
+        el.className = `card ${card.type}${sel ? ' sel' : ''}${off ? ' off' : ''}`;
+        el.innerHTML = `
+          <span class="card-type">${card.type.toUpperCase()}</span>
+          <div class="card-row">
+            <span class="card-name">${card.name}</span>
+            <span class="card-cost">${card.intoxCost > 0 ? `+${card.intoxCost} 🍺` : 'Free'}</span>
+          </div>
+          <div class="card-desc">${card.desc}</div>`;
+        if (myTurn) el.addEventListener('click', () => handleCardClick(card));
+        handEl.appendChild(el);
+      }
+    }
+
+    // Target selection prompt
+    const hint   = document.getElementById('target-hint');
+    const cancel = document.getElementById('btn-cancel');
+    if (pendingCard && myTurn) {
+      hint.textContent = `Click an opponent to target with "${pendingCard.name}"`;
+      hint.style.display = 'block';
+      cancel.style.display = 'inline-block';
+    } else {
+      hint.style.display = 'none';
+      cancel.style.display = 'none';
+    }
+  }
+
+  // ── End ──────────────────────────────────────────────────────────────────────
+  function renderEnd() {
+    show('s-end');
+    const winner = gs.winnerId ? gs.players[gs.winnerId] : null;
+    document.getElementById('winner-name').textContent = winner?.name ?? 'Nobody';
+
+    const sorted = Object.values(gs.players).sort((a, b) => b.ko - a.ko);
+    document.getElementById('scores').innerHTML =
+      '<div style="color:var(--dim);font-size:.76rem;text-transform:uppercase;margin-bottom:10px">Final Scores</div>' +
+      sorted.map(p => `
+        <div class="score-row">
+          <span>${p.id === gs.winnerId ? '🏆 ' : ''}${p.name}</span>
+          <span>${p.ko} KO</span>
+        </div>`).join('');
+  }
+
+  // ── Card Actions ─────────────────────────────────────────────────────────────
+  function handleCardClick(card) {
+    if (card.targetMode === 'self' || card.targetMode === 'all') {
+      pendingCard = null;
+      socket.emit('play', { instanceId: card.instanceId, targetId: null });
+      return;
+    }
+    // Toggle selection for single-target cards
+    pendingCard = pendingCard?.instanceId === card.instanceId ? null : card;
+    renderGame();
+  }
+
+  function selectTarget(targetId) {
+    if (!pendingCard) return;
+    const { instanceId } = pendingCard;
+    pendingCard = null;
+    socket.emit('play', { instanceId, targetId });
+  }
+
+  // ── Controls ─────────────────────────────────────────────────────────────────
+  document.getElementById('btn-join').addEventListener('click', () => {
+    const name = document.getElementById('inp-name').value.trim();
+    const code = document.getElementById('inp-code').value.trim().toUpperCase();
+    if (!name) { toast('Please enter your name first.'); return; }
+    socket.emit('join', { name, code });
+    show('s-lobby');
+  });
+
+  // Enter key on inputs
+  ['inp-name', 'inp-code'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('btn-join').click();
+    });
+  });
+
+  // Auto-uppercase room code input
+  document.getElementById('inp-code').addEventListener('input', function () {
+    const pos = this.selectionStart;
+    this.value = this.value.toUpperCase();
+    this.setSelectionRange(pos, pos);
+  });
+
+  document.getElementById('btn-start').addEventListener('click', () => socket.emit('start'));
+
+  document.getElementById('btn-pass').addEventListener('click', () => {
+    pendingCard = null;
+    socket.emit('pass');
+  });
+
+  document.getElementById('btn-cancel').addEventListener('click', () => {
+    pendingCard = null;
+    renderGame();
+  });
+
+  document.getElementById('btn-again').addEventListener('click', () => {
+    gs = null; pendingCard = null;
+    show('s-join');
+  });
+
+  // Rules modal
+  const rulesOverlay = document.getElementById('rules-overlay');
+  function openRules()  { rulesOverlay.classList.add('show'); }
+  function closeRules() { rulesOverlay.classList.remove('show'); }
+  document.getElementById('btn-rules-join').addEventListener('click', openRules);
+  document.getElementById('btn-rules-close').addEventListener('click', closeRules);
+  rulesOverlay.addEventListener('click', e => { if (e.target === rulesOverlay) closeRules(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && rulesOverlay.classList.contains('show')) closeRules(); });
+
+  // Reaction buttons
+  document.querySelectorAll('#reaction-bar .react-btn').forEach(btn => {
+    btn.addEventListener('click', () => sendReaction(btn.dataset.emoji));
+  });
+</script>
+</body>
+</html>
